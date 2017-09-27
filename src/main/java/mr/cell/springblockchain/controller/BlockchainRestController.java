@@ -2,7 +2,7 @@ package mr.cell.springblockchain.controller;
 
 import lombok.extern.slf4j.Slf4j;
 import mr.cell.springblockchain.domain.Block;
-import mr.cell.springblockchain.domain.Blockchain;
+import mr.cell.springblockchain.service.BlockchainService;
 import mr.cell.springblockchain.domain.Transaction;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,19 +17,21 @@ import java.util.List;
 @RequestMapping("/blockchain")
 public class BlockchainRestController {
 
-	private Blockchain blockchain;
+	private BlockchainService blockchain;
 
-	public BlockchainRestController() {
-		blockchain = new Blockchain();
+	public BlockchainRestController(BlockchainService blockchain) {
+		this.blockchain = blockchain;
 	}
 
 	@PostMapping("/transactions/new")
 	public void createNewTransaction(@RequestBody Transaction transaction) {
+		log.info("Creating new transaction: {}.", transaction);
 		blockchain.addTransaction(transaction);
 	}
 
 	@GetMapping("/mine")
 	public Block mineBlock() {
+		log.info("Mining the next block.");
 		Block lastBlock = blockchain.getLastBlock();
 		Long lastProof = lastBlock.getProof();
 		Long proof = blockchain.calculateProofOfWork(lastProof);
@@ -41,6 +43,7 @@ public class BlockchainRestController {
 
 	@GetMapping("/chain")
 	public List<Block> getBlockchain() {
+		log.info("Returning blockchain.");
 		return blockchain.getChain();
 	}
 

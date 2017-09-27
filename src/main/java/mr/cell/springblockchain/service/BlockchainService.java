@@ -1,8 +1,12 @@
-package mr.cell.springblockchain.domain;
+package mr.cell.springblockchain.service;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.codec.digest.DigestUtils;
+import mr.cell.springblockchain.domain.Block;
+import mr.cell.springblockchain.domain.Node;
+import mr.cell.springblockchain.domain.Transaction;
+import mr.cell.springblockchain.validator.BlockchainValidator;
+import org.springframework.stereotype.Service;
 
 import java.util.*;
 
@@ -10,7 +14,10 @@ import java.util.*;
  * Created by U517779 on 2017-09-26.
  */
 @Slf4j
-public class Blockchain {
+@Service
+public class BlockchainService {
+
+	private NodeService nodeService;
 
 	@Getter
 	private List<Block> chain;
@@ -18,25 +25,26 @@ public class Blockchain {
 	@Getter
 	private Collection<Transaction> currentTransactions;
 
-	public static String calculateHash(Block block) {
-		String encodedBlock = Base64.getEncoder().encodeToString(block.toString().getBytes());
-		return DigestUtils.sha256Hex(encodedBlock);
-	}
+	@Getter
+	private Set<Node> nodes;
 
-	public Blockchain() {
+	private BlockchainValidator validator;
+
+	public BlockchainService(NodeService nodeService) {
 		chain = new ArrayList<>();
 		currentTransactions = new ArrayList<>();
+		nodes = new HashSet<>();
+		this.nodeService = nodeService;
+		validator = new BlockchainValidator();
 		createNewBlock(100, "1");
 	}
 
 	public Block createNewBlock(long proof) {
-		log.info("Creating new block");
-		String previousHash = Blockchain.calculateHash(getLastBlock());
+		String previousHash = getLastBlock().calculateHash();
 		return createNewBlock(proof, previousHash);
 	}
 
 	public Block createNewBlock(long proof, String previousHash) {
-		log.info("Creating new block");
 		Block block = new Block(getNextIndex(), new Date(), currentTransactions, proof, previousHash);
 		currentTransactions = new ArrayList<>();
 		chain.add(block);
@@ -44,37 +52,42 @@ public class Blockchain {
 	}
 
 	public int addTransaction(Transaction transaction) {
-		log.info("Adding transaction");
 		currentTransactions.add(transaction);
 		return getNextIndex();
 	}
 
 	private int getNextIndex() {
-		log.info("Getting next index");
 		return getLastBlock() == null ?
 				1 :
 				getLastBlock().getIndex() + 1;
 	}
 
 	public Block getLastBlock() {
-		log.info("Getting last block");
 		return chain.isEmpty() ?
 				null :
 				chain.get(chain.size() - 1);
 	}
 
 	public long calculateProofOfWork(long lastProof) {
-		log.info("Calculating proof of work");
 		long proof = 0;
-		while(!isValidProof(lastProof, proof)) {
+		while( !validator.isValidProof(lastProof, proof)) {
 			proof++;
 		}
 		return proof;
 	}
 
-	public boolean isValidProof(long lastProof, long proof) {
-		String guess = Base64.getEncoder().encodeToString(("" + lastProof + proof).getBytes());
-		String guessHash = DigestUtils.sha256Hex(guess);
-		return guessHash.startsWith("0000");
+	public boolean resolveConflicts() {
+		List<Block> theirsChain = nodes.stream()
+				.map(nodeService::requestChainFromNode)
+				.filter(validator::isValidChain)
+				.max(Comparator.comparingInt(theirChain -> theirChain.size()))
+				.orElse(new ArrayList<>());
+
+		if(theirsChain.size() > chain.size()) {
+			chain = theirsChain;
+			return true;
+		}
+
+		return false;
 	}
 }
